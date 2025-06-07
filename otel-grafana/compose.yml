@@ -1,0 +1,63 @@
+networks:
+  otel-clickhouse:
+
+services:
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    volumes:
+      - ./clickhouse-config/db-data:/var/lib/clickhouse
+      - ./clickhouse-config/users.xml:/etc/clickhouse-server/users.d/users.xml
+    container_name: clickhouse
+    environment:
+      - CLICKHOUSE_DB=otel
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    networks:
+      - otel-clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  otelcollector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel
+    command:
+      - "--config=/etc/otel-collector-config.yml"
+      - "--set=service.telemetry.logs.level=INFO"
+    volumes:
+      - ./otel-config/config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4317:4317"   # otlp receiver
+      - "1888:1888"   # pprof extension
+      - "13133:13133" # health_check extension
+      - "55679:55679" # zpages extension
+      # - "24224:24224" # fluentforwarder
+      # - "24224:24224/udp" # fluentforwarder
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - otel-clickhouse
+
+  
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    volumes:
+      - ./shared/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor metricsSummary
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource,vertamedia-clickhouse-datasource
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=vertamedia-clickhouse-datasource
+      # - GF_INSTALL_PLUGINS=https://storage.googleapis.com/integration-artifacts/grafana-exploretraces-app/grafana-exploretraces-app-latest.zip;grafana-traces-app
+    ports:
+      - "3000:3000"
+    networks:
+      - otel-clickhouse

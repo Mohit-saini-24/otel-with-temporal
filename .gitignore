@@ -1,0 +1,8 @@
+temporal-service/node_modules
+temporal-service/.npmrc
+temporal-service/.env
+service1/node_modules
+service1/.env
+service1/.npmrc
+instrumentation/node_modules
+otel-grafana/clickhouse-config/db-data
